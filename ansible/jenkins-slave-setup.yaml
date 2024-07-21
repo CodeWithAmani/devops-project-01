@@ -1,0 +1,69 @@
+---
+- name: Install Maven on Jenkins Slave
+  hosts: jenkins-slaves
+  become: yes
+
+  vars:
+    maven_version: "3.9.2"
+    maven_home: "/opt/maven"
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name:
+          - wget
+          - tar
+          - default-jdk
+        state: present
+
+    - name: Create Maven directory
+      file:
+        path: "{{ maven_home }}"
+        state: directory
+        mode: "0755"
+
+    - name: Get Maven download URL
+      set_fact:
+        maven_url: "https://archive.apache.org/dist/maven/maven-3/{{ maven_version }}/binaries/apache-maven-{{ maven_version }}-bin.tar.gz"
+
+    - name: Download Maven
+      get_url:
+        url: "{{ maven_url }}"
+        dest: "/tmp/apache-maven-{{ maven_version }}-bin.tar.gz"
+
+    - name: Extract Maven
+      unarchive:
+        src: "/tmp/apache-maven-{{ maven_version }}-bin.tar.gz"
+        dest: "{{ maven_home }}"
+        remote_src: yes
+        creates: "{{ maven_home }}/apache-maven-{{ maven_version }}"
+
+    - name: Create symlink for Maven
+      file:
+        src: "{{ maven_home }}/apache-maven-{{ maven_version }}"
+        dest: "{{ maven_home }}/maven"
+        state: link
+
+    - name: Set Maven environment variables
+      copy:
+        dest: /etc/profile.d/maven.sh
+        content: |
+          export M2_HOME={{ maven_home }}/maven
+          export PATH=${M2_HOME}/bin:${PATH}
+        mode: "0755"
+
+    - name: Verify Maven installation in the same shell
+      shell: |
+        . /etc/profile.d/maven.sh
+        mvn -version
+      register: maven_version_output
+      args:
+        executable: /bin/bash
+
+    - name: Print Maven version
+      debug:
+        msg: "{{ maven_version_output.stdout }}"
